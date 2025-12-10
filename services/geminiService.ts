@@ -16,7 +16,8 @@ export const generatePagePrompts = async (theme: string): Promise<string[]> => {
     I am creating a coloring book for children with the theme: "${theme}".
     Please generate 5 distinct, creative, and fun descriptions for 5 different coloring pages based on this theme.
     The descriptions should be visual and simple, suitable for converting into an image prompt.
-    Return ONLY a JSON array of strings. Do not include markdown formatting.
+    Ensure all descriptions are safe for children, family-friendly, and do not infringe on any copyrights (use generic terms, e.g., "a princess" instead of "Cinderella", "a superhero" instead of "Superman").
+    Return ONLY a JSON array of strings. Do not include markdown formatting or code blocks.
     Example: ["A cute dinosaur eating a leaf", "A rocket ship flying past the moon"]
   `;
 
@@ -33,8 +34,12 @@ export const generatePagePrompts = async (theme: string): Promise<string[]> => {
       }
     });
 
-    const text = response.text;
+    let text = response.text;
     if (!text) throw new Error("No text response from model");
+    
+    // Clean up markdown code blocks if present (common issue with JSON responses)
+    text = text.replace(/```json\n?|```/g, '').trim();
+
     return JSON.parse(text) as string[];
   } catch (error) {
     console.error("Error generating prompts:", error);
@@ -66,29 +71,45 @@ export const generateColoringPage = async (sceneDescription: string): Promise<st
     Centered composition.
   `;
 
-  // Using gemini-2.5-flash-image for standard/free tier usage
-  const response = await ai.models.generateContent({
-    model: 'gemini-2.5-flash-image',
-    contents: {
-      parts: [{ text: imagePrompt }]
-    },
-    config: {
-      // aspectRatio is supported by flash-image, but imageSize is not.
-      // We rely on the model's default resolution (usually 1024x1024)
-      // Note: While config parameters might vary, strictly passing supported ones is best.
-    }
-  });
+  try {
+    // Using gemini-2.5-flash-image for standard/free tier usage
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash-image',
+      contents: {
+        parts: [{ text: imagePrompt }]
+      },
+      config: {
+        // permissive safety settings to avoid blocking safe children's content
+        safetySettings: [
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+        ],
+      }
+    });
 
-  // Extract image from response parts
-  if (response.candidates && response.candidates[0].content && response.candidates[0].content.parts) {
-    for (const part of response.candidates[0].content.parts) {
-      if (part.inlineData && part.inlineData.data) {
-        return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+    // Extract image from response parts
+    if (response.candidates && response.candidates[0].content && response.candidates[0].content.parts) {
+      for (const part of response.candidates[0].content.parts) {
+        if (part.inlineData && part.inlineData.data) {
+          return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+        }
       }
     }
-  }
+    
+    // If no image found, check if there's a text refusal
+    const textPart = response.candidates?.[0]?.content?.parts?.find(p => p.text);
+    if (textPart?.text) {
+      console.warn(`Model refused image generation: ${textPart.text}`);
+      throw new Error(`Model refused: ${textPart.text}`);
+    }
 
-  throw new Error("No image generated in response");
+    throw new Error("No image generated in response");
+  } catch (error) {
+    console.error(`Error generating image for "${sceneDescription}":`, error);
+    throw error;
+  }
 };
 
 /**

@@ -30,6 +30,9 @@ function App() {
   const [selectedCover, setSelectedCover] = useState<string | null>(null); // URL or base64
   const [coverMode, setCoverMode] = useState<'preset' | 'upload'>('preset');
 
+  // Confirmation Dialog State
+  const [showDownloadConfirm, setShowDownloadConfirm] = useState(false);
+
   // --- Effects ---
   useEffect(() => {
     // Load presets on mount
@@ -87,9 +90,14 @@ function App() {
     }
   };
 
-  const handleDownload = () => {
+  const handleDownloadClick = () => {
     if (generatedImages.length === 0) return;
+    setShowDownloadConfirm(true);
+  };
+
+  const confirmDownload = () => {
     createColoringBookPDF(childName, theme, generatedImages, selectedCover);
+    setShowDownloadConfirm(false);
   };
 
   const handleReset = () => {
@@ -306,7 +314,7 @@ function App() {
                 </div>
                 {status === 'complete' && (
                   <button 
-                    onClick={handleDownload}
+                    onClick={handleDownloadClick}
                     className="bg-green-600 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-green-200 hover:bg-green-700 transition-colors"
                   >
                     <Download className="w-5 h-5" />
@@ -340,6 +348,30 @@ function App() {
 
       {/* Floating Chat */}
       <ChatWidget />
+
+      {/* Confirmation Dialog */}
+      {showDownloadConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-sm w-full transform transition-all scale-100">
+            <h3 className="text-xl font-bold text-slate-800 mb-2">Download PDF</h3>
+            <p className="text-slate-600 mb-6">Are you sure you want to download the coloring book?</p>
+            <div className="flex gap-3 justify-end">
+              <button 
+                onClick={() => setShowDownloadConfirm(false)}
+                className="px-4 py-2 rounded-xl text-slate-600 font-medium hover:bg-slate-100 transition-colors"
+              >
+                No
+              </button>
+              <button 
+                onClick={confirmDownload}
+                className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold hover:bg-indigo-700 transition-colors shadow-lg shadow-indigo-200"
+              >
+                Yes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
